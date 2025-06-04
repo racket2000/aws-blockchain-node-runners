@@ -75,18 +75,22 @@ export class HANodesConstruct extends cdkContructs.Construct {
       }
 
       if (dataVolume.type !== constants.InstanceStoreageDeviceVolumeType){
-          blockDevices.push(
-              {
-                  deviceName: constants.VolumeDeviceNames[arrayIndex],
-                  volume: autoscaling.BlockDeviceVolume.ebs(dataVolume.sizeGiB, {
-                      deleteOnTermination: true,
-                      throughput: dataVolume.throughput,
-                      encrypted: true,
-                      iops: dataVolume.iops,
-                      volumeType: autoscaling.EbsDeviceVolumeType[dataVolume.type.toUpperCase() as keyof typeof autoscaling.EbsDeviceVolumeType],
-                  }),
-              }
-          )
+          const volumeType = dataVolume.type.toUpperCase();
+          const ebsConfig: any = {
+              deleteOnTermination: true,
+              encrypted: true,
+              iops: dataVolume.iops,
+              volumeType: autoscaling.EbsDeviceVolumeType[dataVolume.type.toUpperCase() as keyof typeof autoscaling.EbsDeviceVolumeType],
+          };
+
+          if (volumeType == 'GP3'){
+              ebsConfig.throughput = dataVolume.throughput;
+          }
+
+          blockDevices.push({
+              deviceName: constants.VolumeDeviceNames[arrayIndex],
+              volume: autoscaling.BlockDeviceVolume.ebs(dataVolume.sizeGiB, ebsConfig)
+          })
       }
    });
 
@@ -116,10 +120,10 @@ export class HANodesConstruct extends cdkContructs.Construct {
       maxCapacity: 4,
       vpcSubnets: vpcSubnets,
       defaultInstanceWarmup: cdk.Duration.minutes(1),
-      healthCheck: autoscaling.HealthCheck.elb({
-          // Should give enough time for the node to catch up
-          grace: cdk.Duration.minutes(albHealthCheckGracePeriodMin),
-      }),
+      healthChecks: autoscaling.HealthChecks.withAdditionalChecks({
+        additionalTypes: [autoscaling.AdditionalHealthCheckType.ELB],
+        gracePeriod: cdk.Duration.minutes(albHealthCheckGracePeriodMin)
+      })
   });
 
   rpcNodesAsg.addLifecycleHook("lifecycle-hook", {

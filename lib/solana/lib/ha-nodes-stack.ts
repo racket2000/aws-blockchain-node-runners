@@ -6,8 +6,8 @@ import * as s3Assets from "aws-cdk-lib/aws-s3-assets";
 import * as nag from "cdk-nag";
 import * as path from "path";
 import * as fs from "fs";
-import * as configTypes from "./config/solanaConfig.interface";
-import { SolanaNodeSecurityGroupConstruct } from "./constructs/solana-node-security-group"
+import * as configTypes from "./config/node-config.interface";
+import { NodeSecurityGroupConstruct } from "./constructs/node-security-group"
 import { HANodesConstruct } from "../../constructs/ha-rpc-nodes-with-alb"
 import * as constants from "../../constructs/constants";
 
@@ -23,6 +23,8 @@ export interface SolanaHANodesStackProps extends cdk.StackProps {
     albHealthCheckGracePeriodMin: number;
     heartBeatDelayMin: number;
     numberOfNodes: number;
+
+    limitOutTrafficMbps: number;
 }
 
 export class SolanaHANodesStack extends cdk.Stack {
@@ -47,13 +49,14 @@ export class SolanaHANodesStack extends cdk.Stack {
             albHealthCheckGracePeriodMin,
             heartBeatDelayMin,
             numberOfNodes,
+            limitOutTrafficMbps,
         } = props;
 
         // Using default VPC
         const vpc = ec2.Vpc.fromLookup(this, "vpc", { isDefault: true });
 
         // Setting up the security group for the node from Solana-specific construct
-        const instanceSG = new SolanaNodeSecurityGroupConstruct (this, "security-group", {
+        const instanceSG = new NodeSecurityGroupConstruct(this, "security-group", {
             vpc: vpc,
         })
 
@@ -70,20 +73,15 @@ export class SolanaHANodesStack extends cdk.Stack {
         // Making sure our instance will be able to read the assets
         asset.bucket.grantRead(instanceRole);
 
-        // Checking configuration
+        // Use Ubuntu 24.04 LTS image for amd64. Find more: https://discourse.ubuntu.com/t/finding-ubuntu-images-with-the-aws-ssm-parameter-store/15507
+        let ubuntuStableImageSsmName = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+        // Setting up the node using generic Single Node constract
         if (instanceCpuType === ec2.AmazonLinuxCpuType.ARM_64) {
-            throw new Error("ARM_64 is not yet supported");
+            ubuntuStableImageSsmName = "/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id"
         }
-
-        if (nodeConfiguration === "consensus") {
-            throw new Error("Consensus node configuration is not yet supported for HA setup");
-        }
-
-        // Use Ubuntu 20.04 LTS image for amd64. Find more: https://discourse.ubuntu.com/t/finding-ubuntu-images-with-the-aws-ssm-parameter-store/15507
-        const ubuntu204stableImageSsmName = "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
 
         // Parsing user data script and injecting necessary variables
-        const nodeScript = fs.readFileSync(path.join(__dirname, "assets", "user-data", "node.sh")).toString();
+        const nodeScript = fs.readFileSync(path.join(__dirname, "assets", "user-data-ubuntu.sh")).toString();
         const accountsVolumeSizeBytes = accountsVolume.sizeGiB * constants.GibibytesToBytesConversionCoefficient;
         const dataVolumeSizeBytes = dataVolume.sizeGiB * constants.GibibytesToBytesConversionCoefficient;
 
@@ -106,15 +104,16 @@ export class SolanaHANodesStack extends cdk.Stack {
             _SOLANA_CLUSTER_: solanaCluster,
             _LIFECYCLE_HOOK_NAME_: lifecycleHookName,
             _ASG_NAME_: autoScalingGroupName,
+            _LIMIT_OUT_TRAFFIC_MBPS_: limitOutTrafficMbps.toString(),
         });
 
         // Setting up the nodse using generic High Availability (HA) Node constract
         const healthCheckPath = "/health";
-        const rpcNodes = new HANodesConstruct (this, "rpc-nodes", {
+        const rpcNodes = new HANodesConstruct(this, "rpc-nodes", {
             instanceType,
-            dataVolumes: [dataVolume, accountsVolume],
+            dataVolumes: [accountsVolume, dataVolume],
             rootDataVolumeDeviceName: "/dev/sda1",
-            machineImage: ec2.MachineImage.fromSsmParameter(ubuntu204stableImageSsmName),
+            machineImage: ec2.MachineImage.fromSsmParameter(ubuntuStableImageSsmName),
             role: instanceRole,
             vpc,
             securityGroup: instanceSG.securityGroup,

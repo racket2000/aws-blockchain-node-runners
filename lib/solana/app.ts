@@ -3,7 +3,7 @@ import 'dotenv/config'
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import * as nag from "cdk-nag";
-import * as config from "./lib/config/solanaConfig";
+import * as config from "./lib/config/node-config";
 
 import { SolanaSingleNodeStack } from "./lib/single-node-stack";
 import { SolanaCommonStack } from "./lib/common-stack";
@@ -21,34 +21,15 @@ new SolanaSingleNodeStack(app, "solana-single-node", {
     stackName: `solana-single-node-${config.baseNodeConfig.nodeConfiguration}`,
     env: { account: config.baseConfig.accountId, region: config.baseConfig.region },
 
-    instanceType: config.baseNodeConfig.instanceType,
-    instanceCpuType: config.baseNodeConfig.instanceCpuType,
-    solanaCluster: config.baseNodeConfig.solanaCluster,
-    solanaVersion: config.baseNodeConfig.solanaVersion,
-    nodeConfiguration: config.baseNodeConfig.nodeConfiguration,
-    dataVolume: config.baseNodeConfig.dataVolume,
-    accountsVolume: config.baseNodeConfig.accountsVolume,
-    solanaNodeIdentitySecretARN: config.baseNodeConfig.solanaNodeIdentitySecretARN,
-    voteAccountSecretARN: config.baseNodeConfig.voteAccountSecretARN,
-    authorizedWithdrawerAccountSecretARN: config.baseNodeConfig.authorizedWithdrawerAccountSecretARN,
-    registrationTransactionFundingAccountSecretARN: config.baseNodeConfig.registrationTransactionFundingAccountSecretARN,
+    ...config.baseNodeConfig
 });
 
 new SolanaHANodesStack(app, "solana-ha-nodes", {
     stackName: `solana-ha-nodes-${config.baseNodeConfig.nodeConfiguration}`,
     env: { account: config.baseConfig.accountId, region: config.baseConfig.region },
 
-    instanceType: config.baseNodeConfig.instanceType,
-    instanceCpuType: config.baseNodeConfig.instanceCpuType,
-    solanaCluster: config.baseNodeConfig.solanaCluster,
-    solanaVersion: config.baseNodeConfig.solanaVersion,
-    nodeConfiguration: config.baseNodeConfig.nodeConfiguration,
-    dataVolume: config.baseNodeConfig.dataVolume,
-    accountsVolume: config.baseNodeConfig.accountsVolume,
-
-    albHealthCheckGracePeriodMin: config.haNodeConfig.albHealthCheckGracePeriodMin,
-    heartBeatDelayMin: config.haNodeConfig.heartBeatDelayMin,
-    numberOfNodes: config.haNodeConfig.numberOfNodes,
+    ...config.baseNodeConfig,
+    ...config.haNodeConfig,
 });
 
 
